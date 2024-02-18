@@ -1,11 +1,20 @@
 package main
 
+/*
+Program to extract mess details from an excel file
+	- Show Items based on day and meal
+	- Show number of items based on day and meal
+	- Check whether a certain item is present on a particular day and meal
+	- Generate a json file containing the information present in the excel file
+*/
+
 import (
 	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
@@ -35,6 +44,7 @@ func (m *Meal) PrintDetails() {
 	for _, item := range m.Items {
 		fmt.Printf("  - %s\n", item)
 	}
+
 }
 
 func ConvertToMeals(menu []map[string]interface{}) []*Meal {
@@ -42,14 +52,17 @@ func ConvertToMeals(menu []map[string]interface{}) []*Meal {
 
 	for _, day := range menu {
 		dayName := day["Day"].(string)
+		dayDate := day["Date"].(string)
+		delete(day, "Day")
+		delete(day, "Date")
 		for mealType, items := range day {
 			if mealType != "Day" {
-				meal := strings.Title(strings.ToLower(mealType)) // Capitalize the meal type
+				meal := strings.ToUpper(mealType) // Capitalize the meal type
 				var mealItems []string
-				for _, item := range items.([]interface{}) { // Convert each item to string
-					mealItems = append(mealItems, item.(string))
+				for _, item := range items.([]string) { // Convert each item to string
+					mealItems = append(mealItems, item)
 				}
-				mealStruct := NewMeal(dayName, "", meal, mealItems)
+				mealStruct := NewMeal(dayName, dayDate, meal, mealItems)
 				meals = append(meals, mealStruct)
 			}
 		}
@@ -142,7 +155,8 @@ func ConvertToJson(food map[string][]string) []map[string]interface{} {
 		// Determine meal type based on the last character of the key
 		mealType := key[len(key)-1:]
 		if mealType == "b" {
-			dayMap["Breakfast"] = meals
+			dayMap["Date"] = meals[0]
+			dayMap["Breakfast"] = meals[1:]
 		} else if mealType == "l" {
 			dayMap["Lunch"] = meals
 		} else if mealType == "d" {
@@ -185,7 +199,7 @@ func extractxlsx() map[string][]string {
 	food = make(map[string][]string)
 
 	// Extracting data from the excel file
-	f, err := excelize.OpenFile("wtf.xlsx")
+	f, err := excelize.OpenFile("./Postman-task-1/wtf.xlsx")
 	if err != nil {
 		fmt.Println(err)
 		return food
@@ -258,15 +272,50 @@ func extractxlsx() map[string][]string {
 
 }
 
+func askday() string {
+	var day string
+	days := []string{"SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"}
+	for {
+		fmt.Print("Enter day: ")
+		fmt.Scanln(&day)
+
+		for _, i := range days {
+			if i == strings.ToUpper(day) {
+				return day
+			}
+		}
+
+		fmt.Println("\n The Day you've entered is incorrect !")
+		fmt.Printf("\n")
+
+	}
+
+}
+
+func askmeal() string {
+	var meal string
+	meals := []string{"BREAKFAST", "LUNCH", "DINNER"}
+	for {
+		fmt.Print("Enter meal of the day: ")
+		fmt.Scanln(&meal)
+
+		for _, i := range meals {
+			if i == strings.ToUpper(meal) {
+				return meal
+			}
+		}
+
+		fmt.Println("\n The meal you've entered is incorrect !")
+		fmt.Printf("\n")
+	}
+}
+
 func finditemno(food map[string][]string) {
 
 	var day, meal string
 
-	fmt.Print("Enter day: ")
-	fmt.Scanln(&day)
-
-	fmt.Print("Enter meal: ")
-	fmt.Scanln(&meal)
+	day = askday()
+	meal = askmeal()
 
 	// Capitalize the strings
 	day = strings.ToUpper(day)
@@ -288,11 +337,8 @@ func showitems(food map[string][]string) {
 
 	var day, meal string
 
-	fmt.Print("Enter day: ")
-	fmt.Scanln(&day)
-
-	fmt.Print("Enter meal: ")
-	fmt.Scanln(&meal)
+	day = askday()
+	meal = askmeal()
 
 	// Capitalize the strings
 	day = strings.ToUpper(day)
@@ -314,11 +360,8 @@ func checkitem(food map[string][]string) {
 
 	var day, meal, item string
 
-	fmt.Print("Enter day: ")
-	fmt.Scanln(&day)
-
-	fmt.Print("Enter meal: ")
-	fmt.Scanln(&meal)
+	day = askday()
+	meal = askmeal()
 
 	// To Take item input from user . item can include more than one word
 
@@ -387,7 +430,7 @@ func main() {
 	food = extractxlsx()
 
 	for {
-		fmt.Printf("\n Menu \n 1.Show Items \n 2.Find Number of Items \n 3.Check Items \n 4.Convert to Json and write to Json file \n 5.Create structure\n")
+		fmt.Printf("\n Menu \n 1.Show Items \n 2.Find Number of Items \n 3.Check Items \n 4. Write to Json file and create a struct  \n")
 		var choice string
 		fmt.Scanln(&choice)
 
@@ -401,8 +444,19 @@ func main() {
 		case "4":
 			var menu []map[string]interface{} = ConvertToJson(food)
 			meals := ConvertToMeals(menu)
+
+			// Sort meals by day and meal type
+			sort.Slice(meals, func(i, j int) bool {
+				if meals[i].Day != meals[j].Day {
+					return meals[i].Day < meals[j].Day
+				}
+				return meals[i].Meal < meals[j].Meal
+			})
+
+			// Print meals in sorted order
 			for _, meal := range meals {
 				meal.PrintDetails()
+				fmt.Println("###################################")
 			}
 
 		default:
@@ -412,17 +466,4 @@ func main() {
 		fmt.Printf("\n\n")
 	}
 
-	// the following code block is used for printing out the map!!
-	/*
-		// Iterate over the map and print each key and its associated list of strings
-		for key, values := range food {
-			// Print the key
-			fmt.Printf("%s:\n", key)
-
-			// Print each value in the list
-			for _, value := range values {
-				fmt.Printf("  - %s\n", value)
-			}
-		}
-	*/
 }
